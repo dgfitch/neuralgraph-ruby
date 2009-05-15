@@ -6,7 +6,7 @@ require 'ruby-processing'
 # HORRIBLE HACKS INSIDE!
 #
 
-class Graph < Processing::App
+class NeuralGraph < Processing::App
   attr_accessor :nodes, :click_x, :click_y
 
   # Used by some math-intensive subobjects to postpone updates
@@ -166,7 +166,11 @@ class Graph < Processing::App
       if s.any?
         s.each {|x| x.selected = true}
       else
-        n = random_node
+        if mouse_button == LEFT then
+          n = random_node
+        else
+          n = SamplerNode.new :app => self
+        end
         n.selected = true
         n.x = mouse_x
         n.y = mouse_y
@@ -189,9 +193,10 @@ class Graph < Processing::App
     self.mode = :SELECT
   end
 
-  
-
   def key_pressed
+    if key == 'd'
+      delete_selected_nodes
+    end
     @key_shift = key == CODED and key_code == SHIFT
     if @key_shift
       case self.mode 
@@ -211,6 +216,13 @@ class Graph < Processing::App
     @key_shift = false
   end
 
+
+  def delete_selected_nodes
+    selected_nodes.each do |x|
+      @nodes.each {|n| n.disconnect x }
+      @nodes.delete x
+    end
+  end
 
   def deselect
     @nodes.each {|x| x.selected = false}
@@ -278,14 +290,15 @@ end
 
 
 class GraphObject
-  attr_accessor :a, :x, :y, :hue, :sat, :stroke, :selected
+  attr_accessor :a, :x, :y, :hue, :sat, :val, :stroke, :selected
 
   def initialize opts={}
     @a = opts[:app]
     @x = opts[:x] || 0
     @y = opts[:y] || 0
-    @hue = rand
-    @sat = rand
+    @hue = opts[:hue] || rand
+    @sat = opts[:sat] || rand
+    @val = opts[:val] || rand
     @stroke = opts[:stroke] || 0.0
   end
 
@@ -313,7 +326,7 @@ class Node < GraphObject
     @original_r = opts[:r] || 10
     @r = @original_r
     @l = 0.0
-    @pulse = rand / 10.0
+    @pulse = 0.1 + rand / 10.0
     @connections = []
     @dendrites = []
   end
@@ -328,6 +341,10 @@ class Node < GraphObject
       @connections << c
       add_dendrite c if self.selected
     end
+  end
+
+  def disconnect node
+    @connections.delete_if {|x| x.destination == node}
   end
 
   def add_dendrite c
@@ -391,6 +408,8 @@ class Node < GraphObject
     end
 
     a.ellipse @x, @y, @r, @r
+    a.no_stroke
+    a.ellipse @x, @y, @r * 0.8, @r * 0.8
 
     @dendrites.each { |d| d.draw }
   end
@@ -434,6 +453,23 @@ class Node < GraphObject
   end
 end
 
+class SamplerNode < Node
+  def initialize opts={}
+    opts[:r]   ||= rand(5) + 20
+    opts[:sat] ||= 0.8 + rand(0.2)
+    super opts
+    @hue = 0.01
+  end
+
+  def draw
+    super
+
+    a.no_stroke 
+    a.fill 1, 1, 0.5, 0.9
+    a.ellipse @x, @y, @r / 2.0, @r / 2.0
+  end
+end
+
 class NodeDendrite < GraphObject
   attr_accessor :node, :connection, :r, :closest
 
@@ -441,7 +477,8 @@ class NodeDendrite < GraphObject
     super opts
     @node = opts[:node]
     @connection = opts[:connection]
-    @hue = (@node.hue + @connection.other(@node).hue) / 2.0
+    @hue = @node.hue
+    @sat = @node.sat
     @r = 3.0
     update
   end
@@ -449,7 +486,7 @@ class NodeDendrite < GraphObject
   def draw
     a.stroke_weight 1
     a.stroke 0, 1
-    a.fill @hue, 1, 0.5, 0.8
+    a.fill @hue, @sat, 0.5, 0.8
 
     a.ellipse @x, @y, @r, @r
   end
@@ -509,11 +546,12 @@ class Connection < GraphObject
     a.push_matrix
     a.translate x1, y1
     a.rotate angle
+    a.translate 0, 2
 
     length = Math.distance(x1,y1,x2,y2)
 
     if length > 0 then 
-      curve = length * source.pulse * Math.sin(a.frame_count * source.pulse / 4.0)
+      curve = length * source.pulse * Math.sin(a.frame_count * source.pulse / 8.0) * 0.4
       a.no_fill
       a.bezier 0, 0, length/2.0, curve, length/2.0, -1 * curve, length, 0
     end
@@ -526,4 +564,4 @@ class Connection < GraphObject
   end
 end
 
-Graph.new :title => "Graph", :width => 900, :height => 600
+NeuralGraph.new :title => "Neural Graph", :width => 800, :height => 400

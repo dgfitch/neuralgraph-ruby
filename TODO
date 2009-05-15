@@ -5,7 +5,5 @@ TODO:
 - Sample playback
 - MP3 sampling
 - Deleting nodes and connections
-- Different node types
 - Actual node firing
-- Draw node lines in a curved bezier from points slightly around the circle to one side, so mutual connections are clearer?
-
+- Serialization (just yaml hopefully)

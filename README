@@ -1,10 +1,15 @@
-UI is as follows right now:
+UI is as follows right now, until the radial menu fanciness is in:
 
 Click to select.
-Click-drag to rubber-band select
-Shift click empty space to create.
-Shift click nodes to add/remove from selection.
+Click-drag to rubber-band select.
+Shift-click nodes to add/remove from selection.
+
 Click-drag nodes to move.
 Shift-click-drag nodes to connect.
+
+Shift-click empty space to create.
+Shift-right-click empty space to create a sampler node. Which does nothing, yet.
+
+D to delete nodes. (I can't get DELETE or BACKSPACE to work.)
 
 There is no sound yet.
