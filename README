@@ -1,0 +1,10 @@
+UI is as follows right now:
+
+Click to select.
+Click-drag to rubber-band select
+Shift click empty space to create.
+Shift click nodes to add/remove from selection.
+Click-drag nodes to move.
+Shift-click-drag nodes to connect.
+
+There is no sound yet.
