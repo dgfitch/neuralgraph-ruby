@@ -278,13 +278,14 @@ end
 
 
 class GraphObject
-  attr_accessor :a, :x, :y, :fill, :stroke, :selected
+  attr_accessor :a, :x, :y, :hue, :sat, :stroke, :selected
 
   def initialize opts={}
     @a = opts[:app]
     @x = opts[:x] || 0
     @y = opts[:y] || 0
-    @fill = opts[:fill] || 1.0
+    @hue = rand
+    @sat = rand
     @stroke = opts[:stroke] || 0.0
   end
 
@@ -305,12 +306,13 @@ class GraphObject
 end
 
 class Node < GraphObject
-  attr_accessor :r, :pulse, :connections, :dendrites
+  attr_accessor :r, :l, :pulse, :connections, :dendrites
 
   def initialize opts={}
     super opts
     @original_r = opts[:r] || 10
     @r = @original_r
+    @l = 0.0
     @pulse = rand / 10.0
     @connections = []
     @dendrites = []
@@ -375,15 +377,15 @@ class Node < GraphObject
     @connections.each { |c| c.draw }
 
     if only_selected?
-      a.fill @fill, 0.9 if @fill
+      a.fill @hue, @sat, 0.5, 0.9
       a.stroke_weight 4
       a.stroke 0, 1
     elsif selected?
-      a.fill @fill, 0.7 if @fill
+      a.fill @hue, @sat, 0.5, 0.7
       a.stroke_weight 3
       a.stroke 0, 0.7
     else
-      a.fill @fill, 0.5 if @fill
+      a.fill @hue, @sat, 0.5, 0.5
       a.stroke_weight 1
       a.stroke 0, 0.5
     end
@@ -439,6 +441,7 @@ class NodeDendrite < GraphObject
     super opts
     @node = opts[:node]
     @connection = opts[:connection]
+    @hue = (@node.hue + @connection.other(@node).hue) / 2.0
     @r = 3.0
     update
   end
@@ -446,7 +449,7 @@ class NodeDendrite < GraphObject
   def draw
     a.stroke_weight 1
     a.stroke 0, 1
-    a.fill 1, 1, 0.5, 0.8
+    a.fill @hue, 1, 0.5, 0.8
 
     a.ellipse @x, @y, @r, @r
   end
