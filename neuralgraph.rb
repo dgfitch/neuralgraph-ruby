@@ -18,10 +18,13 @@ class NeuralGraph < Processing::App
     color_mode HSB, 1.0
     frame_rate 30
     smooth
+    @menu = []
     @nodes = []
-    random_nodes 8
+    random_nodes 5
 
     self.mode = :SELECT
+    @font = create_font('Helvetica', 12)
+    text_font @font
   end
 
   def random_nodes x
@@ -57,6 +60,14 @@ class NeuralGraph < Processing::App
     when :CREATE_LINK: draw_create_link
     when :MOVE: draw_moving
     end
+
+    draw_menu
+    fill 0
+    text frame_rate(), 10, 20
+  end
+
+  def draw_menu
+    @menu.each {|x| x.draw}
   end
 
   def draw_selection
@@ -65,10 +76,11 @@ class NeuralGraph < Processing::App
     stroke 0, 0.5
     rect_mode CORNERS
     rect click_x, click_y, mouse_x, mouse_y
+    rect_mode CORNER
   end
 
   def draw_moving
-    selected_nodes.each do |n|
+    selected(@nodes).each do |n|
       dx = click_x - mouse_x
       dy = click_y - mouse_y
       fill 1
@@ -77,7 +89,7 @@ class NeuralGraph < Processing::App
   end
 
   def draw_create_link
-    under = unselected_nodes_under_cursor
+    under = unselected_under_cursor @nodes
     if under.length > 0 and under[0] then
       u = under[0]
       stroke 1, 1, 0.5, 0.9
@@ -90,7 +102,7 @@ class NeuralGraph < Processing::App
     end
 
     fill 0
-    selected_nodes.each do |n|
+    selected(@nodes).each do |n|
       dx = click_x - mouse_x
       dy = click_y - mouse_y
       arrow_between n.x, n.y, mouse_x, mouse_y
@@ -124,18 +136,35 @@ class NeuralGraph < Processing::App
   def mouse_pressed
     @click_x = mouse_x
     @click_y = mouse_y
-    case self.mode
-    when :CREATE:
-      if selected_under_cursor?
-        self.mode = :CREATE_LINK
+    if mouse_button == RIGHT then
+      self.mode = :MENU
+      @menu.clear
+      ["Test", "Stuff"].each_with_index do |t, i|
+        @menu << 
+          RectMenuItem.new(
+            :app => self, 
+            :x => mouse_x,
+            :y => mouse_y + i * 20,
+            :w => 100,
+            :h => 18,
+            :text => t
+          )
       end
-    when :SELECT:
-      if selected_under_cursor? and @key_shift
-        self.mode = :CREATE_LINK
-      elsif selected_under_cursor?
-        self.mode = :MOVE
-      else
-        self.mode = :SELECT_ACTIVE
+    else
+      active_nodes = selected_under_cursor? @nodes
+      case self.mode
+      when :CREATE:
+        if active_nodes
+          self.mode = :CREATE_LINK
+        end
+      when :SELECT:
+        if active_nodes and @key_shift
+          self.mode = :CREATE_LINK
+        elsif active_nodes
+          self.mode = :MOVE
+        else
+          self.mode = :SELECT_ACTIVE
+        end
       end
     end
   end
@@ -145,9 +174,9 @@ class NeuralGraph < Processing::App
     when :SELECT_ACTIVE:
       @nodes.each {|x| x.selected = false} unless @key_shift
       if (mouse_x - click_x).abs < 5 and (mouse_y - click_y).abs < 5 then
-        s = nodes_under_cursor
+        s = under_cursor @nodes
       else
-        s = nodes_under_box
+        s = under_box @nodes
       end
 
       unless s.any?
@@ -156,13 +185,13 @@ class NeuralGraph < Processing::App
         s.each {|x| x.selected = true}
       end
     when :MOVE:
-      selected_nodes.each do |n|
+      selected(@nodes).each do |n|
         dx = click_x - mouse_x
         dy = click_y - mouse_y
         n.move dx, dy
       end
     when :CREATE:
-      s = nodes_under_cursor
+      s = under_cursor @nodes
       if s.any?
         s.each {|x| x.selected = true}
       else
@@ -180,15 +209,17 @@ class NeuralGraph < Processing::App
     when :CREATE_LINK:
       if (mouse_x - click_x).abs < 5 and (mouse_y - click_y).abs < 5 then
         # tiny moves => user actually wants to deselect
-        selected_nodes[0].selected = false
+        selected(@nodes)[0].selected = false
       else
-        under = unselected_nodes_under_cursor
+        under = unselected_under_cursor @nodes
         if under.length > 0 and under[0] then
-          selected_nodes.each do |n|
+          selected(@nodes).each do |n|
             n.connect under[0]
           end
         end
       end
+    when :MENU:
+      @menu.clear
     end
     self.mode = :SELECT
   end
@@ -201,7 +232,7 @@ class NeuralGraph < Processing::App
     if @key_shift
       case self.mode 
       when :SELECT: self.mode = :CREATE
-      when :MOVE: self.mode = :CREATE_LINK if one_selected?
+      when :MOVE: self.mode = :CREATE_LINK if one_selected? @nodes
       end
     end
   end
@@ -218,7 +249,7 @@ class NeuralGraph < Processing::App
 
 
   def delete_selected_nodes
-    selected_nodes.each do |x|
+    selected(@nodes).each do |x|
       @nodes.each {|n| n.disconnect x }
       @nodes.delete x
     end
@@ -228,45 +259,36 @@ class NeuralGraph < Processing::App
     @nodes.each {|x| x.selected = false}
   end
 
-  def unselected_nodes_under_cursor
-    nodes_under_cursor.reject {|x| x.selected}
+  def unselected_under_cursor n
+    under_cursor(n).reject {|x| x.selected}
   end
 
-  def nodes_under_cursor
-    @nodes.find_all {|x| x.under_cursor}
+  def under_cursor n
+    n.find_all {|x| x.under_cursor?}
   end
 
-  def nodes_under_box
-    @nodes.find_all {|x| x.under_cursor click_x, click_y, mouse_x, mouse_y}
+  def under_box n
+    n.find_all {|x| x.under_cursor? click_x, click_y, mouse_x, mouse_y}
   end
 
-  def selected_node
-    sel = selected_nodes
-    if sel.length > 0
-      sel[0]
-    else
-      nil
-    end
+  def selected n
+    n.find_all {|x| x.selected?}
   end
 
-  def selected_nodes
-    @nodes.find_all {|x| x.selected?}
+  def selected_under_cursor? n
+    selected(under_cursor(n)).any?
   end
 
-  def selected_under_cursor?
-    selected_nodes.find_all {|x| x.under_cursor}.any?
+  def one_selected? n
+    selected(n).length == 1
   end
 
-  def one_selected?
-    selected_nodes.length == 1
+  def none_selected? n
+    selected(n).length == 0
   end
 
-  def none_selected?
-    selected_nodes.length == 0
-  end
-
-  def some_selected?
-    selected_nodes.length > 0
+  def some_selected? n
+    selected(n).length > 0
   end
 
   def mode
@@ -289,7 +311,7 @@ module Math
 end
 
 
-class GraphObject
+class CanvasObject
   attr_accessor :a, :x, :y, :hue, :sat, :val, :stroke, :selected
 
   def initialize opts={}
@@ -302,7 +324,7 @@ class GraphObject
     @stroke = opts[:stroke] || 0.0
   end
 
-  def under_cursor x1=nil, y1=nil, x2=nil, y2=nil
+  def under_cursor? x1=nil, y1=nil, x2=nil, y2=nil
     return false
   end
 
@@ -311,14 +333,60 @@ class GraphObject
   end
 
   def only_selected?
-    @selected and a.one_selected?
+    @selected and a.one_selected? a.nodes
   end
 
   def draw
   end
 end
 
-class Node < GraphObject
+class RectObject < CanvasObject
+  attr_accessor :h, :w
+
+  def initialize opts={}
+    super opts
+    @h = opts[:h] || 10
+    @w = opts[:w] || 10
+  end
+
+  def under_cursor? x1=nil, y1=nil, x2=nil, y2=nil
+    if (a.mouse_x >= @x and a.mouse_x <= @x + @w and
+        a.mouse_y >= @y and a.mouse_y <= @y + @h)
+      true
+    end
+  end
+
+  def draw
+    if under_cursor?
+      a.fill @hue, @sat, @val, 0.9
+      a.stroke_weight 2
+      a.stroke 0, 0.9
+    else
+      a.fill @hue, @sat, @val, 0.7
+      a.stroke_weight 1
+      a.stroke 0, 0.7
+    end
+    a.rect x, y, w, h
+  end
+end
+
+class RectMenuItem < RectObject
+  attr_accessor :text
+
+  def initialize opts={}
+    super opts
+    @hue, @sat, @val = 0, 0, 0.8
+    @text = opts[:text] || ""
+  end
+
+  def draw
+    super
+    a.fill 0
+    a.text @text, x + 4, y + 12
+  end
+end
+
+class Node < CanvasObject
   attr_accessor :r, :l, :pulse, :connections, :dendrites
 
   def initialize opts={}
@@ -364,7 +432,7 @@ class Node < GraphObject
     @selected = x
   end
 
-  def under_cursor x1=nil, y1=nil, x2=nil, y2=nil
+  def under_cursor? x1=nil, y1=nil, x2=nil, y2=nil
     if x1 == nil then
       node_distance = Math.distance(a.mouse_x, a.mouse_y, @x, @y)
       return true if node_distance < @r / 1.8
@@ -443,7 +511,7 @@ class Node < GraphObject
         Math.distance(d1.x,d1.y,a.mouse_x,a.mouse_y) <=>
         Math.distance(d2.x,d2.y,a.mouse_x,a.mouse_y) 
       end
-      if closest and d.under_cursor
+      if closest and d.under_cursor?
         d.closest = true
         closest.r += 1.5 if closest.r < 14
       else
@@ -470,7 +538,7 @@ class SamplerNode < Node
   end
 end
 
-class NodeDendrite < GraphObject
+class NodeDendrite < CanvasObject
   attr_accessor :node, :connection, :r, :closest
 
   def initialize opts={}
@@ -498,13 +566,13 @@ class NodeDendrite < GraphObject
     @r -= 0.5 if r > 3 and not @closest
   end
 
-  def under_cursor
+  def under_cursor?
     node_distance = Math.distance(a.mouse_x, a.mouse_y, @x, @y)
     return true if node_distance < 7
   end
 end
 
-class Connection < GraphObject
+class Connection < CanvasObject
   attr_accessor :source, :destination
 
   def initialize opts={}
@@ -564,4 +632,4 @@ class Connection < GraphObject
   end
 end
 
-NeuralGraph.new :title => "Neural Graph", :width => 800, :height => 400
+NeuralGraph.new :title => "Neural Graph", :width => 800, :height => 300
