@@ -7,7 +7,7 @@ require 'ruby-processing'
 #
 
 class NeuralGraph < Processing::App
-  attr_accessor :nodes, :click_x, :click_y
+  attr_accessor :nodes, :click_x, :click_y, :dt, :current_time, :tick, :bpm
 
   # Used by some math-intensive subobjects to postpone updates
   def frame_skip
@@ -20,32 +20,52 @@ class NeuralGraph < Processing::App
     smooth
     @menu = []
     @nodes = []
-    random_nodes 5
+    #random_nodes 20
 
     self.mode = :SELECT
     @font = create_font('Helvetica', 12)
     text_font @font
+
+    @tick = Time.now.to_f
+    @last_time = @tick
+    @bpm = 120.0
+    background 1
   end
 
   def random_nodes x
     (1..x).each do |i|
       @nodes << random_node
     end
-    (1..x-4).each do |i|
+    (1..x-3).each do |i|
       @nodes[i+2].connect @nodes[i]
     end
-    (3..x-4).each do |i|
+    (2..x-3).each do |i|
       @nodes[i+2].connect @nodes[i]
     end
   end
 
   def update
-    @nodes.each {|n| n.update}
+    @current_time = Time.now.to_f
+    @dt = @current_time - @last_time
+    if @current_time - @tick > (60.0 / @bpm) then
+      @tick = @last_time + (60.0 / @bpm)
+      @nodes.each {|n| n.activate}
+    end
+    @last_time = @current_time
+    @nodes.each do |n| 
+      # This makes node activation grow by rate slowly over time...
+      # Not sure I like that yet
+      n.activate @dt
+      n.check
+      n.update
+    end
   end
 
   def draw
+    no_stroke
+    fill 1, 0.7
+    rect 0, 0, width, height
     update
-    background 1
     draw_nodes
     draw_ui
   end
@@ -387,16 +407,18 @@ class RectMenuItem < RectObject
 end
 
 class Node < CanvasObject
-  attr_accessor :r, :l, :pulse, :connections, :dendrites
+  attr_accessor :r, :level, :rate, :pulse, :connections, :dendrites
 
   def initialize opts={}
     super opts
-    @original_r = opts[:r] || 10
-    @r = @original_r
-    @l = 0.0
-    @pulse = 0.1 + rand / 10.0
+    @original_r  = opts[:r] || 10
+    @r           = @original_r
+    @rate        = 0.25
+    @level       = (a.current_time - a.tick) * @rate
+    @pulse       = 0.1 + rand / 10.0
+    @tick        = 0
     @connections = []
-    @dendrites = []
+    @dendrites   = []
   end
 
   def connect node
@@ -413,6 +435,25 @@ class Node < CanvasObject
 
   def disconnect node
     @connections.delete_if {|x| x.destination == node}
+  end
+
+  def activate x=1
+    @level += @rate * x
+  end
+
+  def check
+    fire if @level >= 1.0
+  end
+
+  def fire
+    @connections.each {|x| x.other(self).activate}
+    @rate = 0.25
+    @level -= 1
+    while @level >= 1 do
+      @level -= 1
+      @rate = @rate + 0.25
+    end
+    @tick = a.current_time
   end
 
   def add_dendrite c
@@ -475,9 +516,19 @@ class Node < CanvasObject
       a.stroke 0, 0.5
     end
 
+
     a.ellipse @x, @y, @r, @r
     a.no_stroke
-    a.ellipse @x, @y, @r * 0.8, @r * 0.8
+    a.ellipse @x, @y, @r * @level, @r * @level
+
+    since_fired = a.current_time - @tick
+    if since_fired < 0.5
+      a.no_fill
+      a.stroke @hue, @sat, 0.5, 0.5 - since_fired
+      a.stroke_weight 2
+      echo = r * (1.2 + (since_fired * 2))
+      a.ellipse @x, @y, echo, echo
+    end
 
     @dendrites.each { |d| d.draw }
   end
@@ -632,4 +683,4 @@ class Connection < CanvasObject
   end
 end
 
-NeuralGraph.new :title => "Neural Graph", :width => 800, :height => 300
+NeuralGraph.new :title => "Neural Graph", :width => 600, :height => 300

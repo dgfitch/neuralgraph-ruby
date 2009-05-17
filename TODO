@@ -4,6 +4,5 @@ TODO:
 - Live input sampling
 - Sample playback
 - MP3 sampling
-- Deleting nodes and connections
-- Actual node firing
+- Deleting connections
 - Serialization (just yaml hopefully)
