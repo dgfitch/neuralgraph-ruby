@@ -18,11 +18,10 @@ class NeuralGraph < Processing::App
     color_mode HSB, 1.0
     frame_rate 30
     smooth
-    @menu = []
     @nodes = []
     #random_nodes 20
 
-    self.mode = :SELECT
+    @mode = :SELECT
     @font = create_font('Helvetica', 12)
     text_font @font
 
@@ -75,7 +74,7 @@ class NeuralGraph < Processing::App
   end
 
   def draw_ui
-    case self.mode
+    case @mode
     when :SELECT_ACTIVE: draw_selection
     when :CREATE_LINK: draw_create_link
     when :MOVE: draw_moving
@@ -87,7 +86,7 @@ class NeuralGraph < Processing::App
   end
 
   def draw_menu
-    @menu.each {|x| x.draw}
+    @menu.draw if @menu
   end
 
   def draw_selection
@@ -157,40 +156,42 @@ class NeuralGraph < Processing::App
     @click_x = mouse_x
     @click_y = mouse_y
     if mouse_button == RIGHT then
-      self.mode = :MENU
-      @menu.clear
-      ["Test", "Stuff"].each_with_index do |t, i|
-        @menu << 
-          RectMenuItem.new(
-            :app => self, 
-            :x => mouse_x,
-            :y => mouse_y + i * 20,
-            :w => 100,
-            :h => 18,
-            :text => t
-          )
+      if @mode == :MENU then
+        @mode = :SELECT
+        @menu = nil
+      else
+        @mode = :MENU
+        @menu = SliceMenu.new(
+          :app => self,
+          :x => mouse_x,
+          :y => mouse_y
+        )
+        (1..7).each do
+          @menu.add "", nil, nil do nil end
+        end
       end
     else
       active_nodes = selected_under_cursor? @nodes
-      case self.mode
+      case @mode
       when :CREATE:
         if active_nodes
-          self.mode = :CREATE_LINK
+          @mode = :CREATE_LINK
         end
       when :SELECT:
         if active_nodes and @key_shift
-          self.mode = :CREATE_LINK
+          @mode = :CREATE_LINK
         elsif active_nodes
-          self.mode = :MOVE
+          @mode = :MOVE
         else
-          self.mode = :SELECT_ACTIVE
+          @mode = :SELECT_ACTIVE
         end
       end
     end
   end
 
   def mouse_released
-    case self.mode 
+    return if mouse_button == RIGHT
+    case @mode 
     when :SELECT_ACTIVE:
       @nodes.each {|x| x.selected = false} unless @key_shift
       if (mouse_x - click_x).abs < 5 and (mouse_y - click_y).abs < 5 then
@@ -238,10 +239,8 @@ class NeuralGraph < Processing::App
           end
         end
       end
-    when :MENU:
-      @menu.clear
     end
-    self.mode = :SELECT
+    @mode = :SELECT
   end
 
   def key_pressed
@@ -250,18 +249,18 @@ class NeuralGraph < Processing::App
     end
     @key_shift = key == CODED and key_code == SHIFT
     if @key_shift
-      case self.mode 
-      when :SELECT: self.mode = :CREATE
-      when :MOVE: self.mode = :CREATE_LINK if one_selected? @nodes
+      case @mode 
+      when :SELECT: @mode = :CREATE
+      when :MOVE: @mode = :CREATE_LINK if one_selected? @nodes
       end
     end
   end
 
   def key_released
     if @key_shift
-      case self.mode 
-      when :CREATE_LINK: self.mode = :MOVE
-      when :CREATE: self.mode = :SELECT
+      case @mode 
+      when :CREATE_LINK: @mode = :MOVE
+      when :CREATE: @mode = :SELECT
       end
     end
     @key_shift = false
@@ -311,13 +310,6 @@ class NeuralGraph < Processing::App
     selected(n).length > 0
   end
 
-  def mode
-    @mode
-  end
-  
-  def mode= x
-    @mode = x
-  end
 end
 
 module Math
@@ -403,6 +395,81 @@ class RectMenuItem < RectObject
     super
     a.fill 0
     a.text @text, x + 4, y + 12
+  end
+end
+
+class SliceMenu < CanvasObject
+  def initialize opts={}
+    super opts
+    @menu = []
+  end
+
+  def add object, get, set, &block
+    @menu << SliceMenuItem.new(
+      :app => @a,
+      :parent => self,
+      :index => @menu.length + 1
+      # TODO
+    )
+  end
+
+  def length
+    @menu.length
+  end
+
+  def draw
+    @menu.each {|m| m.draw}
+  end
+end
+
+class SliceMenuItem < CanvasObject
+  attr_accessor :parent, :tick, :index
+
+  def initialize opts={}
+    super opts
+    @parent = opts[:parent]
+    @index = opts[:index] || 0
+    @tick = a.current_time
+  end
+
+  def length
+    len = 50
+    age = (a.current_time - @tick) * 4.0
+    len *= age if age < 1
+    len *= 1.2 if under_cursor?
+    return len
+  end
+
+  def under_cursor?
+    # TODO
+    false
+  end
+
+  def draw
+    if under_cursor?
+      a.fill @hue, @sat, @val, 0.9
+      a.stroke_weight 2
+      a.stroke 0, 0.9
+    else
+      a.fill @hue, @sat, @val, 0.7
+      a.stroke_weight 1
+      a.stroke 0, 0.7
+    end
+
+    len = length
+
+    a.push_matrix
+    a.translate @parent.x, @parent.y
+    a.push_matrix
+    a.rotate(Math::PI * 2 * index / @parent.length.to_f)
+    a.translate -2, length / 2.0
+    a.line 0, 0, 0, length
+    a.line 0, length, -20, length
+    a.pop_matrix
+    a.rotate(Math::PI * 2 * (index + 1) / @parent.length.to_f)
+    a.translate 2, length / 2.0
+    a.line 0, 0, 0, length
+    a.pop_matrix
   end
 end
 
