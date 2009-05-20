@@ -496,10 +496,10 @@ class SliceMenuItem < CanvasObject
   attr_accessor :parent, :tick, :index
 
   MOUSEWHEEL_SPEED = 20.0
-  BASE_WIDTH = 60
-  TOP_WIDTH = 240
+  BASE = 0.8
+  TOP = 0.35
   HOLE_LENGTH = 40
-  TOP_CURVE_ADJUST = 80
+  TOP_CURVE_ADJUST = 20
   BOTTOM_CURVE_ADJUST = 8
 
   def initialize opts={}
@@ -507,10 +507,11 @@ class SliceMenuItem < CanvasObject
     @parent = opts[:parent]
     @index = opts[:index] || 0
     @tick = a.current_time
+    @sat = 0.8 + rand * 0.2
 
     # temporary to test mousewheeling and stuff
-    @value = 0.75
-    @size = 80
+    @value = rand
+    @size = 60
   end
 
   def wheel delta
@@ -576,16 +577,16 @@ class SliceMenuItem < CanvasObject
 
 
     ca = Math.cos(a_half)
-    xbl = ca * BASE_WIDTH / plen
+    xbl = ca * @size / (plen * BASE)
     xbr = xbl * -1.0
     ybl = ybr = 0
 
-    xtl = xbl + (ca * TOP_WIDTH / plen)
+    xtl = xbl + (ca * @size / (plen * TOP))
     xtr = xtl * -1.0
-    ytl = ytr = SLICE_LENGTH
+    ytl = ytr = @size
 
-    curve_ty = TOP_CURVE + TOP_CURVE_ADJUST / plen
-    curve_by = BOTTOM_CURVE + BOTTOM_CURVE_ADJUST / plen
+    curve_ty = @size + TOP_CURVE_ADJUST / (plen / 3)
+    curve_by = BOTTOM_CURVE_ADJUST / plen
 
     a.begin_shape
     a.vertex xbl, ybl
@@ -604,7 +605,7 @@ class SliceMenuItem < CanvasObject
     end
     a.stroke_weight 1
 
-    xtl = xbl + (ca * @value * TOP_WIDTH / plen)
+    xtl = xbl + (ca * @value * @size / (plen * TOP))
     xtr = xtl * -1.0
 
     a.begin_shape
