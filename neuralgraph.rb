@@ -160,12 +160,26 @@ class NeuralGraph < Processing::App
         @mode = :SELECT
         @menu = nil
       else
+        opts = {}
+        opts[:app] = self
+
         @mode = :MENU
-        @menu = SliceMenu.new(
-          :app => self,
-          :x => mouse_x,
-          :y => mouse_y
-        )
+        if none_selected? @nodes then
+          opts[:x] = mouse_x
+          opts[:y] = mouse_y
+        else
+          if one_selected? @nodes then
+            sel = selected(@nodes)[0]
+            opts[:x] = sel.x
+            opts[:y] = sel.y
+          else
+            selx, sely = center_of_selection @nodes
+            opts[:x] = selx
+            opts[:y] = sely
+          end
+        end
+
+        @menu = SliceMenu.new opts
         (1..7).each do
           @menu.add "", nil, nil do nil end
         end
@@ -201,7 +215,7 @@ class NeuralGraph < Processing::App
       end
 
       unless s.any?
-        deselect
+        deselect @nodes
       else
         s.each {|x| x.selected = true}
       end
@@ -274,8 +288,8 @@ class NeuralGraph < Processing::App
     end
   end
 
-  def deselect
-    @nodes.each {|x| x.selected = false}
+  def deselect n
+    n.each {|x| x.selected = false}
   end
 
   def unselected_under_cursor n
@@ -308,6 +322,19 @@ class NeuralGraph < Processing::App
 
   def some_selected? n
     selected(n).length > 0
+  end
+
+  def center_of_selection n
+    s  = selected(n)
+    ax = s.inject(nil) do |sum, i|
+      sum ? sum + i.x : i.x
+    end / s.size
+
+    ay = s.inject(nil) do |sum, i|
+      sum ? sum + i.y : i.y
+    end / s.size
+
+    [ax, ay]
   end
 
 end
@@ -425,6 +452,13 @@ end
 class SliceMenuItem < CanvasObject
   attr_accessor :parent, :tick, :index
 
+  BASE_WIDTH = 18
+  TOP_WIDTH = 42
+  HOLE_LENGTH = 40
+  SLICE_LENGTH = 80
+  TOP_CURVE = SLICE_LENGTH * 1.18
+  BOTTOM_CURVE = SLICE_LENGTH * 0.05
+
   def initialize opts={}
     super opts
     @parent = opts[:parent]
@@ -433,7 +467,7 @@ class SliceMenuItem < CanvasObject
   end
 
   def length
-    len = 50
+    len = 1.0
     age = (a.current_time - @tick) * 4.0
     len *= age if age < 1
     len *= 1.2 if under_cursor?
@@ -443,6 +477,18 @@ class SliceMenuItem < CanvasObject
   def under_cursor?
     # TODO
     false
+  end
+
+  def a_per_slice 
+    @a_per_slice ||= (Math::PI * 2  / @parent.length.to_f)
+  end
+
+  def a_half
+    @a_half ||= a_per_slice / 2.0
+  end
+
+  def a_this
+    @a_this ||= a_per_slice * (index + 1)
   end
 
   def draw
@@ -457,18 +503,32 @@ class SliceMenuItem < CanvasObject
     end
 
     len = length
+    
 
     a.push_matrix
     a.translate @parent.x, @parent.y
-    a.push_matrix
-    a.rotate(Math::PI * 2 * index / @parent.length.to_f)
-    a.translate -2, length / 2.0
-    a.line 0, 0, 0, length
-    a.line 0, length, -20, length
-    a.pop_matrix
-    a.rotate(Math::PI * 2 * (index + 1) / @parent.length.to_f)
-    a.translate 2, length / 2.0
-    a.line 0, 0, 0, length
+    a.rotate(a_this + Math::PI / 4 * len)
+    a.translate 0, HOLE_LENGTH * len
+    a.scale len
+
+
+    ca = Math.cos(a_half)
+    xbl = ca * len * BASE_WIDTH
+    xbr = xbl * -1.0
+    ybl = ybr = 0
+
+    xtl = xbl + (ca * len * TOP_WIDTH)
+    xtr = xbr - (ca * len * TOP_WIDTH)
+    ytl = ytr = SLICE_LENGTH
+
+    a.begin_shape
+    a.vertex xbl, ybl
+    a.vertex xtl, ytl
+    a.bezier_vertex xtl / 2.0, TOP_CURVE, xtr / 2.0, TOP_CURVE, xtr, ytr
+    a.vertex xbr, ybr
+    a.bezier_vertex 0, BOTTOM_CURVE, 0, BOTTOM_CURVE, xbl, ybl
+    a.end_shape
+
     a.pop_matrix
   end
 end
