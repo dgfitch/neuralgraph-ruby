@@ -6,6 +6,16 @@ require 'ruby-processing'
 # HORRIBLE HACKS INSIDE!
 #
 
+class Wheel
+  def initialize owner
+    @owner = owner
+  end
+
+  def mouseWheelMoved e
+    @owner.wheel e.getWheelRotation
+  end
+end
+
 class NeuralGraph < Processing::App
   attr_accessor :nodes, :click_x, :click_y, :dt, :current_time, :tick, :bpm
 
@@ -19,16 +29,20 @@ class NeuralGraph < Processing::App
     frame_rate 30
     smooth
     @nodes = []
-    #random_nodes 20
 
     @mode = :SELECT
     @font = create_font('Helvetica', 12)
     text_font @font
 
     @tick = Time.now.to_f
-    @last_time = @tick
+    @current_time = @last_time = @tick
     @bpm = 120.0
     background 1
+
+    wheel = Wheel.new self
+    addMouseWheelListener(wheel)
+
+    random_nodes 8
   end
 
   def random_nodes x
@@ -151,6 +165,12 @@ class NeuralGraph < Processing::App
       :fill => random(1)
     )
   end
+  
+  def wheel delta
+    if @mode == :MENU then
+      @menu.wheel delta
+    end
+  end
 
   def mouse_pressed
     @click_x = mouse_x
@@ -180,6 +200,7 @@ class NeuralGraph < Processing::App
         end
 
         @menu = SliceMenu.new opts
+        @menu.owners = selected(@nodes)
         (1..4+rand(12).to_i).each do
           @menu.add "", nil, nil do nil end
         end
@@ -429,6 +450,8 @@ class RectMenuItem < RectObject
 end
 
 class SliceMenu < CanvasObject
+  attr_accessor :owners
+
   def initialize opts={}
     super opts
     @menu = []
@@ -451,6 +474,19 @@ class SliceMenu < CanvasObject
     @menu.length
   end
 
+  def average_r
+    return 80 if @owners.size == 0
+    @owners.inject(nil) do |sum, i|
+      sum ? sum + i.r : i.r
+    end / @owners.size.to_f
+  end
+
+  def wheel delta
+    active = @menu.find {|m| m.under_cursor?}
+    return if not active
+    active.wheel delta
+  end
+
   def draw
     @menu.each {|m| m.draw}
   end
@@ -459,20 +495,28 @@ end
 class SliceMenuItem < CanvasObject
   attr_accessor :parent, :tick, :index
 
-  BASE_WIDTH = 110
-  TOP_WIDTH = 260
+  MOUSEWHEEL_SPEED = 20.0
+  BASE_WIDTH = 60
+  TOP_WIDTH = 240
   HOLE_LENGTH = 40
-  SLICE_LENGTH = 80
-  TOP_CURVE = SLICE_LENGTH * 1.01
-  BOTTOM_CURVE = SLICE_LENGTH * 0.01
   TOP_CURVE_ADJUST = 80
-  BOTTOM_CURVE_ADJUST = 14
+  BOTTOM_CURVE_ADJUST = 8
 
   def initialize opts={}
     super opts
     @parent = opts[:parent]
     @index = opts[:index] || 0
     @tick = a.current_time
+
+    # temporary to test mousewheeling and stuff
+    @value = 0.75
+    @size = 80
+  end
+
+  def wheel delta
+    @value -= delta / MOUSEWHEEL_SPEED
+    @value = 0 if @value < 0
+    @value = 1 if @value > 1
   end
 
   def length
@@ -484,13 +528,16 @@ class SliceMenuItem < CanvasObject
   end
 
   def under_cursor?
-    # actually calculates if cursor is in the same quandrant
-    false
+    # actually calculates if cursor is in the same infinite slice by angle,
+    # not by exact location
+    return @cached_under[:value] if @cached_under and @cached_under[:x] == a.mouse_x and @cached_under[:y] == a.mouse_y
     x1 = a.mouse_x - @parent.x
     y1 = a.mouse_y - @parent.y
     angle = Math.atan2(y1, x1) + Math::PI * 3/2
     angle -= Math::PI * 2 if angle > Math::PI * 2
-    angle >= a_this - a_half and angle < a_this + a_half
+    is_under = (angle >= a_this - a_half and angle < a_this + a_half)
+    @cached_under = {:x => a.mouse_x, :y => a.mouse_y, :value => is_under}
+    is_under
   end
 
   def a_per_slice 
@@ -507,13 +554,13 @@ class SliceMenuItem < CanvasObject
 
   def draw
     if under_cursor?
-      a.fill @hue, @sat, @val, 0.9
+      a.fill @hue, @sat / 2.0, @val, 0.3
       a.stroke_weight 2
-      a.stroke 0, 0.9
+      a.stroke 0, 0.8
     else
-      a.fill @hue, @sat, @val, 0.7
+      a.fill @hue, @sat / 2.0, @val, 0.2
       a.stroke_weight 1
-      a.stroke 0, 0.7
+      a.stroke 0, 0.6
     end
 
     len = length
@@ -523,27 +570,51 @@ class SliceMenuItem < CanvasObject
     a.push_matrix
     a.translate @parent.x, @parent.y
     a.rotate(a_this)
-    a.translate 0, HOLE_LENGTH
+    #a.translate 0, HOLE_LENGTH
+    a.translate 0, 4 + parent.average_r / 2.0
     a.scale len
 
 
     ca = Math.cos(a_half)
-    xbl = ca * len * BASE_WIDTH / plen
+    xbl = ca * BASE_WIDTH / plen
     xbr = xbl * -1.0
     ybl = ybr = 0
 
-    xtl = xbl + (ca * len * TOP_WIDTH / plen)
+    xtl = xbl + (ca * TOP_WIDTH / plen)
     xtr = xtl * -1.0
     ytl = ytr = SLICE_LENGTH
+
+    curve_ty = TOP_CURVE + TOP_CURVE_ADJUST / plen
+    curve_by = BOTTOM_CURVE + BOTTOM_CURVE_ADJUST / plen
 
     a.begin_shape
     a.vertex xbl, ybl
     a.vertex xtl, ytl
-    ty = TOP_CURVE + TOP_CURVE_ADJUST / plen
-    a.bezier_vertex xtl / 2.0, ty, xtr / 2.0, ty, xtr, ytr
+    a.bezier_vertex xtl / 2.0, curve_ty,
+                    xtr / 2.0, curve_ty,
+                    xtr, ytr
     a.vertex xbr, ybr
-    ty = BOTTOM_CURVE + BOTTOM_CURVE_ADJUST / plen
-    a.bezier_vertex 0, ty, 0, ty, xbl, ybl
+    a.bezier_vertex 0, curve_by, 0, curve_by, xbl, ybl
+    a.end_shape
+
+    if under_cursor?
+      a.fill @hue, @sat, @val, 0.7
+    else
+      a.fill @hue, @sat, @val, 0.5
+    end
+    a.stroke_weight 1
+
+    xtl = xbl + (ca * @value * TOP_WIDTH / plen)
+    xtr = xtl * -1.0
+
+    a.begin_shape
+    a.vertex xbl, ybl
+    a.vertex xtl, ytl * @value
+    a.bezier_vertex xtl / 2.0 * @value, curve_ty * @value,
+                    xtr / 2.0 * @value, curve_ty * @value,
+                    xtr, ytr * @value
+    a.vertex xbr, ybr
+    a.bezier_vertex 0, curve_by, 0, curve_by, xbl, ybl
     a.end_shape
 
     a.pop_matrix
@@ -577,7 +648,7 @@ class Node < CanvasObject
     @r           = @original_r
     @rate        = 0.25
     @level       = (a.current_time - a.tick) * @rate
-    @pulse       = 0.1 + rand / 10.0
+    @pulse       = 0.01 + rand / 10.0
     @tick        = 0
     @connections = []
     @dendrites   = []
