@@ -180,8 +180,11 @@ class NeuralGraph < Processing::App
         end
 
         @menu = SliceMenu.new opts
-        (1..7).each do
+        (1..4+rand(12).to_i).each do
           @menu.add "", nil, nil do nil end
+        end
+        (1..rand(4).to_i).each do
+          @menu.add nil, nil, nil do nil end
         end
       end
     else
@@ -432,12 +435,16 @@ class SliceMenu < CanvasObject
   end
 
   def add object, get, set, &block
-    @menu << SliceMenuItem.new(
-      :app => @a,
-      :parent => self,
-      :index => @menu.length + 1
-      # TODO
-    )
+    if object == nil then
+      @menu << SliceBlankItem.new
+    else
+      @menu << SliceMenuItem.new(
+        :app => @a,
+        :parent => self,
+        :index => @menu.length + 1
+        # TODO
+      )
+    end
   end
 
   def length
@@ -452,12 +459,14 @@ end
 class SliceMenuItem < CanvasObject
   attr_accessor :parent, :tick, :index
 
-  BASE_WIDTH = 18
-  TOP_WIDTH = 42
+  BASE_WIDTH = 110
+  TOP_WIDTH = 260
   HOLE_LENGTH = 40
   SLICE_LENGTH = 80
-  TOP_CURVE = SLICE_LENGTH * 1.18
-  BOTTOM_CURVE = SLICE_LENGTH * 0.05
+  TOP_CURVE = SLICE_LENGTH * 1.01
+  BOTTOM_CURVE = SLICE_LENGTH * 0.01
+  TOP_CURVE_ADJUST = 80
+  BOTTOM_CURVE_ADJUST = 14
 
   def initialize opts={}
     super opts
@@ -470,13 +479,18 @@ class SliceMenuItem < CanvasObject
     len = 1.0
     age = (a.current_time - @tick) * 4.0
     len *= age if age < 1
-    len *= 1.2 if under_cursor?
+    len *= 1.1 if under_cursor?
     return len
   end
 
   def under_cursor?
-    # TODO
+    # actually calculates if cursor is in the same quandrant
     false
+    x1 = a.mouse_x - @parent.x
+    y1 = a.mouse_y - @parent.y
+    angle = Math.atan2(y1, x1) + Math::PI * 3/2
+    angle -= Math::PI * 2 if angle > Math::PI * 2
+    angle >= a_this - a_half and angle < a_this + a_half
   end
 
   def a_per_slice 
@@ -488,7 +502,7 @@ class SliceMenuItem < CanvasObject
   end
 
   def a_this
-    @a_this ||= a_per_slice * (index + 1)
+    @a_this ||= a_per_slice * index
   end
 
   def draw
@@ -503,33 +517,54 @@ class SliceMenuItem < CanvasObject
     end
 
     len = length
+    plen = parent.length.to_f
     
 
     a.push_matrix
     a.translate @parent.x, @parent.y
-    a.rotate(a_this + Math::PI / 4 * len)
-    a.translate 0, HOLE_LENGTH * len
+    a.rotate(a_this)
+    a.translate 0, HOLE_LENGTH
     a.scale len
 
 
     ca = Math.cos(a_half)
-    xbl = ca * len * BASE_WIDTH
+    xbl = ca * len * BASE_WIDTH / plen
     xbr = xbl * -1.0
     ybl = ybr = 0
 
-    xtl = xbl + (ca * len * TOP_WIDTH)
-    xtr = xbr - (ca * len * TOP_WIDTH)
+    xtl = xbl + (ca * len * TOP_WIDTH / plen)
+    xtr = xtl * -1.0
     ytl = ytr = SLICE_LENGTH
 
     a.begin_shape
     a.vertex xbl, ybl
     a.vertex xtl, ytl
-    a.bezier_vertex xtl / 2.0, TOP_CURVE, xtr / 2.0, TOP_CURVE, xtr, ytr
+    ty = TOP_CURVE + TOP_CURVE_ADJUST / plen
+    a.bezier_vertex xtl / 2.0, ty, xtr / 2.0, ty, xtr, ytr
     a.vertex xbr, ybr
-    a.bezier_vertex 0, BOTTOM_CURVE, 0, BOTTOM_CURVE, xbl, ybl
+    ty = BOTTOM_CURVE + BOTTOM_CURVE_ADJUST / plen
+    a.bezier_vertex 0, ty, 0, ty, xbl, ybl
     a.end_shape
 
     a.pop_matrix
+  end
+end
+
+class SliceBlankItem < CanvasObject
+  attr_accessor :parent, :index
+
+  def initialize opts={}
+    super opts
+    @parent = opts[:parent]
+    @index = opts[:index] || 0
+  end
+
+  def under_cursor?
+    false
+  end
+
+  def draw
+    # nothing!
   end
 end
 
