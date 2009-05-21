@@ -31,7 +31,7 @@ class NeuralGraph < Processing::App
     @nodes = []
 
     @mode = :SELECT
-    @font = create_font('Helvetica', 12)
+    @font = create_font('Helvetica', 10)
     text_font @font
 
     @tick = Time.now.to_f
@@ -61,7 +61,7 @@ class NeuralGraph < Processing::App
     @current_time = Time.now.to_f
     @dt = @current_time - @last_time
     if @current_time - @tick > (60.0 / @bpm) then
-      @tick = @last_time + (60.0 / @bpm)
+      @tick = @tick + (60.0 / @bpm)
       @nodes.each {|n| n.activate}
     end
     @last_time = @current_time
@@ -165,6 +165,14 @@ class NeuralGraph < Processing::App
       :fill => random(1)
     )
   end
+
+  def rect_center
+    rect_mode CENTER
+  end
+
+  def rect_corner
+    rect_mode CORNER
+  end
   
   def wheel delta
     if @mode == :MENU then
@@ -184,19 +192,13 @@ class NeuralGraph < Processing::App
         opts[:app] = self
 
         @mode = :MENU
-        if none_selected? @nodes then
-          opts[:x] = mouse_x
-          opts[:y] = mouse_y
-        else
-          if one_selected? @nodes then
-            sel = selected(@nodes)[0]
-            opts[:x] = sel.x
-            opts[:y] = sel.y
-          else
-            selx, sely = center_of_selection @nodes
-            opts[:x] = selx
-            opts[:y] = sely
-          end
+        opts[:x] = mouse_x
+        opts[:y] = mouse_y
+
+        if one_selected? @nodes and selected_under_cursor? @nodes then
+          sel = selected(@nodes)[0]
+          opts[:x] = sel.x
+          opts[:y] = sel.y
         end
 
         @menu = SliceMenu.new opts
@@ -509,6 +511,15 @@ class SliceMenuItem < CanvasObject
     @tick = a.current_time
     @sat = 0.8 + rand * 0.2
 
+    r_text = rand
+    @text = 
+      if    r_text > 0.8 then "HOORAY"
+      elsif r_text > 0.6 then "AWESOME"
+      elsif r_text > 0.4 then "RADICAL"
+      elsif r_text > 0.2 then "NOISIER"
+      else                    "HOORJ??"
+      end
+
     # temporary to test mousewheeling and stuff
     @value = rand
     @size = 60
@@ -524,7 +535,7 @@ class SliceMenuItem < CanvasObject
     len = 1.0
     age = (a.current_time - @tick) * 4.0
     len *= age if age < 1
-    len *= 1.1 if under_cursor?
+    len *= 1.2 if under_cursor?
     return len
   end
 
@@ -618,6 +629,18 @@ class SliceMenuItem < CanvasObject
     a.bezier_vertex 0, curve_by, 0, curve_by, xbl, ybl
     a.end_shape
 
+    if under_cursor?
+      if a_this > Math::PI
+        a.translate -3, ybr + 3
+        a.rotate Math::PI / 2.0
+      else
+        a.translate 3, @size - 3
+        a.rotate Math::PI / -2.0
+      end
+      a.fill 0
+      a.text @text, 0, 0
+    end
+
     a.pop_matrix
   end
 end
@@ -683,10 +706,7 @@ class Node < CanvasObject
     @connections.each {|x| x.other(self).activate}
     @rate = 0.25
     @level -= 1
-    while @level >= 1 do
-      @level -= 1
-      @rate = @rate + 0.25
-    end
+    while @level >= 1 do @level -= 1 end
     @tick = a.current_time
   end
 
